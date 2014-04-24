@@ -8,6 +8,7 @@ import Control.Monad.Random
 import Control.Monad.Writer
 import Data.Maybe
 import Data.List
+import Data.Ord
 
 import qualified Data.Text as T
 
@@ -22,7 +23,7 @@ type Score = Int
 data Direction = East | West | North | South deriving (Show, Eq)
 
 data MoveOutcome = Lose | Win | Active | Invalid
-data RoundResult = RoundResult Score MoveOutcome Board 
+data RoundResult = RoundResult Score MoveOutcome Board
 
 showBoard :: Board -> String
 showBoard = T.unpack . T.unlines . fmap formatRow
@@ -84,7 +85,7 @@ gameRound goal direction board =
             shiftBoard direction board
         result = RoundResult newPoints
         change = board /= newBoard
-    in if not change 
+    in if not change
         then return $ if null $ available newBoard
             then result Lose newBoard
             else result Invalid board
@@ -99,39 +100,27 @@ gameRound goal direction board =
 runGame :: Cell -> Board -> Int -> InputT IO ()
 runGame goal board score = do
     liftIO . putStrLn $ showBoard board
-    -- input <- getInputChar "wasd: "
     liftIO $ putStrLn ""
-    
-    -- let direction = case input of
-    --      Just 'w' -> Just North
-    --      Just 'a' -> Just West
-    --      Just 's' -> Just South
-    --      Just 'd' -> Just East
-    --      _ -> Nothing
 
     liftIO $ threadDelay $ 10^(5::Int)
     direction <- nextDirection board
 
-    case direction of
-        Nothing ->
-            runGame goal board score
-        Just dir -> do
-            RoundResult newPoints moveOutcome newBoard <-
-                liftIO $ gameRound goal dir board
-            let totalScore = newPoints + score
-            case moveOutcome of
-                Lose -> liftIO $ 
-                    putStrLn $ "You lose with " ++ show totalScore ++ " points."
-                Win -> liftIO $ 
-                    putStrLn $ "You win with " ++ show totalScore ++ " points!"
-                Active -> do
-                    liftIO $ do
-                        putStrLn $ "You earned " ++ show newPoints ++ " points."
-                        putStrLn $ "Total score is " ++ show totalScore ++ " points."
-                    runGame goal newBoard totalScore
-                Invalid -> do
-                    liftIO $ putStrLn "Invalid move, try again."
-                    runGame goal newBoard totalScore
+    RoundResult newPoints moveOutcome newBoard <-
+        liftIO $ gameRound goal direction board
+    let totalScore = newPoints + score
+    case moveOutcome of
+        Lose -> liftIO $
+            putStrLn $ "You lose with " ++ show totalScore ++ " points."
+        Win -> liftIO $
+            putStrLn $ "You win with " ++ show totalScore ++ " points!"
+        Active -> do
+            liftIO $ do
+                putStrLn $ "You earned " ++ show newPoints ++ " points."
+                putStrLn $ "Total score is " ++ show totalScore ++ " points."
+            runGame goal newBoard totalScore
+        Invalid -> do
+            liftIO $ putStrLn "Invalid move, try again."
+            runGame goal newBoard totalScore
 
 makeStartBoard :: MonadRandom m => Int -> m Board
 makeStartBoard size = do
@@ -148,7 +137,32 @@ main = do
     putStrLn "Use 'w', 'a', 's', and 'd' to move."
     runInputT defaultSettings $ runGame goal startBoard 0
 
-nextDirection :: Board -> InputT IO (Maybe Direction)
-nextDirection _ = do
-  idx <- lift $ randomRIO (0, 3)
-  return $ Just $ [North, East, South, West] !! idx
+nextDirection :: Board -> InputT IO Direction
+nextDirection board = do
+  let boards = do
+        (direction, board') <- shiftAll board
+        board''            <- insertAll board'
+        (_, board''')      <- shiftAll board''
+        return (direction, rank board''')
+  if null boards
+    then return North
+    else return $ fst $ maximumBy (comparing snd) boards
+
+shiftAll :: Board -> [(Direction, Board)]
+shiftAll board = do
+  direction <- [North, East, South, West]
+  let board' = fst $ shiftBoard direction board
+  guard $ board /= board'
+  return (direction, board')
+
+insertAll :: Board -> [Board]
+insertAll board = do
+  pos <- available board
+  coin <- [2, 4]
+  return $ update board pos (Just coin)
+
+rank :: Board -> Int
+rank board = maximum $ boardValues board
+
+boardValues :: Board -> [Int]
+boardValues board = map fromJust $ filter isJust $ concat board
