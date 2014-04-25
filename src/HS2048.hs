@@ -145,8 +145,8 @@ nextDirection board = do
         (_, board''')      <- shiftAll board''
         return (direction, rank board''')
   if null boards
-    then return North
-    else return $ fst $ maximumBy (comparing snd) boards
+  then return North
+  else return $ fst $ maximumBy (comparing snd) boards
 
 shiftAll :: Board -> [(Direction, Board)]
 shiftAll board = do
@@ -166,3 +166,58 @@ rank board = maximum $ boardValues board
 
 boardValues :: Board -> [Int]
 boardValues board = map fromJust $ filter isJust $ concat board
+
+
+-- Static evaluation functions
+-- heuristics considered: monotonicity, smoothness, open tiles, corners are largest
+
+evalCorners :: Board -> Int
+evalCorners b = (evalRowCorner $ head b) + (evalRowCorner $ last b)
+
+evalRowCorner :: Row -> Int
+evalRowCorner l = case elemIndex (maximum l) l of
+                    Nothing -> 0 -- should never happen
+                    Just x  -> if x == 0 || x == length l - 1 
+                               then 20000
+                               else 0
+
+evalFreeTiles :: Board -> Int
+evalFreeTiles board = sum $ map evalFreeRow board
+
+-- 20000 value is arbitrary score for open cell
+evalFreeRow :: Row -> Int
+evalFreeRow (c:cs) = case c of
+                        Nothing -> 20000 + evalFreeRow cs
+                        Just _  -> evalFreeRow cs
+evalFreeRow []     = 0
+
+evalSmoothness :: Board -> Int
+evalSmoothness board = undefined
+
+evalListSmoothness :: [Int] -> Int
+evalListSmoothness = undefined
+
+smoothTests :: Test
+smoothTests = TestList [
+    "General smoothness test." ~: evalSmoothness (emptyBoard 4) ~?= 0 
+    , "Test2" ~: evalSmoothness (emptyBoard 4) ~?= 1
+    ]
+
+evalMonotonicity :: Board -> Int
+evalMonotonicity = undefined
+
+-- kinda hacky, should handle taking the two sums within a helper function
+evalListMonotonicity :: [Int] -> Int -> Int -> Int
+evalListMonotonicity (x:y:xs) decr incr
+    | x > y     = evalListMonotonicity (y:xs) (decr + y) incr
+    | x < y     = evalListMonotonicity (y:xs) decr (incr + y)
+    | otherwise = evalListMonotonicity (y:xs) decr incr
+evalListMonotonicity _ decr incr = maximum [decr, incr]
+
+monotonTest1 :: Test
+monotonTest1 = TestList [
+    "List increasing" ~: evalListMonotonicity [ 4, 6, 8, 10] 4 4 ~?= 28
+    , "List decreasing" ~: evalListMonotonicity [ 8, 4, 2,  1] 8 8 ~?= 15
+    , "List same" ~: evalListMonotonicity [ 2, 2, 2, 2] 0 0 ~?= 0
+    , "Not monotonic" ~: evalListMonotonicity [ 2, 1, 2,  1] 2 2 ~?= 4
+    ]
