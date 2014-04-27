@@ -102,8 +102,8 @@ runGame goal board score = do
     liftIO . putStrLn $ showBoard board
     liftIO $ putStrLn ""
 
-    liftIO $ threadDelay $ 10^(5::Int)
-    direction <- nextDirection board
+    liftIO $ threadDelay $ 10^(4::Int)
+    direction <- liftIO $ return $ nextDirection board
 
     RoundResult newPoints moveOutcome newBoard <-
         liftIO $ gameRound goal direction board
@@ -137,17 +137,31 @@ main = do
     putStrLn "Use 'w', 'a', 's', and 'd' to move."
     runInputT defaultSettings $ runGame goal startBoard 0
 
-nextDirection :: Board -> InputT IO Direction
-nextDirection board = do
-  let boards = do
-        (direction, board') <- shiftAll board
-        board''            <- insertAll board'
-        (_, board''')      <- shiftAll board''
-        return (direction, rank board''')
-  if null boards
-    then return North
-    else return $ fst $ maximumBy (comparing snd) boards
+-- Added code from below
 
+type Depth = Int
+
+nextDirection :: Board -> Direction
+nextDirection board = fst $ maxRank 0 board
+
+-- Get rank of maximum child and its direction
+maxRank ::  Depth -> Board -> (Direction, Int)
+maxRank depth board =
+  let newBoards = shiftAll board in
+  if null newBoards then
+    (North, -1000) -- dummy move that would make you lose
+  else
+    maximumBy (comparing snd) $ map (\(d,b) -> (d, minRank (depth+1) b)) $ newBoards
+
+-- Get rank of minimum child
+minRank :: Depth -> Board -> Int
+minRank depth board =
+  if depth == 5 then rank board  -- arbitrary depth selected
+  else
+    let boards = insertAll board in
+    maximum $ map snd $ map (maxRank (depth+1)) boards
+
+-- Generate all player moves
 shiftAll :: Board -> [(Direction, Board)]
 shiftAll board = do
   direction <- [North, East, South, West]
@@ -155,12 +169,14 @@ shiftAll board = do
   guard $ board /= board'
   return (direction, board')
 
+-- Generate all computer moves
 insertAll :: Board -> [Board]
 insertAll board = do
   pos <- available board
   coin <- [2, 4]
   return $ update board pos (Just coin)
 
+-- Dumb ranking scheme
 rank :: Board -> Int
 rank board = maximum $ boardValues board
 
