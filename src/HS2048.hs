@@ -16,7 +16,7 @@ import System.Console.Haskeline
 
 import Control.Concurrent
 
-import Test.HUnit
+import Test.HUnit hiding (Node)
 
 type Cell  = Maybe Int
 type Row   = [Cell]
@@ -140,56 +140,86 @@ main = do
     runInputT defaultSettings $ runGame goal startBoard 0
 
 -------------------------------------------------------------------------------
--- BASIC MINIMAX SEARCH
+-- AI
 -------------------------------------------------------------------------------
 
-type Depth = Int
-
+-- Interface b/w 2048 and our AI
 nextDirection :: Board -> Direction
-nextDirection board = fst $ maxRank 0 board
-
--- Get rank of maximum child and its direction
-maxRank ::  Depth -> Board -> (Direction, Int)
-maxRank depth board =
-  let newBoards = shiftAll board in
-  if null newBoards then
-    (North, -1000) -- dummy move that would make you lose
+nextDirection board =
+  let newBoards = shiftAllDirections board in
+  if null newBoards then North
   else
-    maximumBy (comparing snd) $ map (\(d,b) -> (d, minRank (depth+1) b)) $ newBoards
+    fst $ maximumBy (comparing snd) $ map f newBoards
+  where f (d,b) = (d, alphabeta b (searchDepth-1) (-10000) (-10000) Min)
+        searchDepth = 5
 
--- Get rank of minimum child
-minRank :: Depth -> Board -> Int
-minRank depth board =
-  if depth == 5 then rank board  -- arbitrary depth selected
-  else
-    let boards = insertAll board in
-    maximum $ map snd $ map (maxRank (depth+1)) boards
-
--- Generate all player moves
-shiftAll :: Board -> [(Direction, Board)]
-shiftAll board = do
+-- helpers
+shiftAllDirections :: Board -> [(Direction, Board)]
+shiftAllDirections board = do
   direction <- [North, East, South, West]
   let board' = fst $ shiftBoard direction board
   guard $ board /= board'
   return (direction, board')
 
--- Generate all computer moves
-insertAll :: Board -> [Board]
-insertAll board = do
+insertAllPositions :: Board -> [Board]
+insertAllPositions board = do
   pos <- available board
   coin <- [2, 4]
   return $ update board pos (Just coin)
 
--------------------------------------------------------------------------------
--- RANKING SCHEME
--------------------------------------------------------------------------------
-rank :: Board -> Int
-rank board = maximum $ boardValues board
-
 boardValues :: Board -> [Int]
 boardValues board = map fromJust $ filter isJust $ concat board
 
--- Static evaluation functions
+-------------------------------------------------------------------------------
+-- Alpha-beta Pruning
+-------------------------------------------------------------------------------
+
+-- Required game specific definitions
+type Node = Board
+
+terminalNode :: Node -> Bool
+terminalNode node = null $ shiftAllDirections node
+
+maxChildren :: Node -> [Node]
+maxChildren node = map snd $ shiftAllDirections node
+
+minChildren :: Node -> [Node]
+minChildren node = insertAllPositions node
+
+rank :: Node -> Int
+rank node = maximum $ boardValues node
+
+-- Generic algorithm
+type Depth = Int
+data Mode = Max | Min
+
+alphabeta :: Node -> Depth -> Int -> Int -> Mode -> Int
+alphabeta node depth alpha beta mode =
+  if depth == 0 || terminalNode node then rank node
+  else
+    case mode of
+      Max -> maxSearch (maxChildren node) depth alpha beta
+      Min -> minSearch (minChildren node) depth alpha beta
+
+maxSearch :: [Node] -> Depth -> Int -> Int -> Int
+maxSearch (b:bs) depth alpha beta =
+  let alpha' = max alpha (alphabeta b (depth-1) alpha beta Min) in
+  if alpha' < beta
+    then maxSearch bs depth alpha' beta
+    else alpha'
+maxSearch [] _ alpha _ = alpha
+
+minSearch :: [Node] -> Depth -> Int -> Int -> Int
+minSearch (b:bs) depth alpha beta =
+  let beta' = min beta (alphabeta b (depth-1) alpha beta Max) in
+  if alpha < beta'
+    then minSearch bs depth alpha beta'
+    else beta'
+minSearch [] _ _ beta = beta
+
+-------------------------------------------------------------------------------
+-- STATIC EVALUATION FUNCTIONS
+-------------------------------------------------------------------------------
 -- heuristics considered: monotonicity, smoothness, open tiles, corners are largest
 
 evalCorners :: Board -> Int
