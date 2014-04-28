@@ -17,6 +17,7 @@ import System.Console.Haskeline
 import Control.Concurrent
 
 import Test.HUnit hiding (Node)
+import Alphabeta
 
 type Cell  = Maybe Int
 type Row   = [Cell]
@@ -150,7 +151,7 @@ nextDirection board =
   if null newBoards then North
   else
     fst $ maximumBy (comparing snd) $ map f newBoards
-  where f (d,b) = (d, alphabeta b (searchDepth-1) (-10000) (-10000) Min)
+  where f (d,b) = (d, alphabeta (BN b) (searchDepth-1) (-10000) (-10000) Min)
         searchDepth = 5
 
 -- helpers
@@ -174,50 +175,16 @@ boardValues board = map fromJust $ filter isJust $ concat board
 -- Alpha-beta Pruning
 -------------------------------------------------------------------------------
 
+data BoardNode = BN { getBoard :: Board }
+
+data Node = Board
+
 -- Required game specific definitions
-type Node = Board
-
-terminalNode :: Node -> Bool
-terminalNode node = null $ shiftAllDirections node
-
-maxChildren :: Node -> [Node]
-maxChildren node = map snd $ shiftAllDirections node
-
-minChildren :: Node -> [Node]
-minChildren node = insertAllPositions node
-
-rank :: Node -> Int
-rank node = evalCorners node + evalFreeTiles node
-
---maximum $ boardValues node
-
--- Generic algorithm
-type Depth = Int
-data Mode = Max | Min
-
-alphabeta :: Node -> Depth -> Int -> Int -> Mode -> Int
-alphabeta node depth alpha beta mode =
-  if depth == 0 || terminalNode node then rank node
-  else
-    case mode of
-      Max -> maxSearch (maxChildren node) depth alpha beta
-      Min -> minSearch (minChildren node) depth alpha beta
-
-maxSearch :: [Node] -> Depth -> Int -> Int -> Int
-maxSearch (b:bs) depth alpha beta =
-  let alpha' = max alpha (alphabeta b (depth-1) alpha beta Min) in
-  if alpha' < beta
-    then maxSearch bs depth alpha' beta
-    else alpha'
-maxSearch [] _ alpha _ = alpha
-
-minSearch :: [Node] -> Depth -> Int -> Int -> Int
-minSearch (b:bs) depth alpha beta =
-  let beta' = min beta (alphabeta b (depth-1) alpha beta Max) in
-  if alpha < beta'
-    then minSearch bs depth alpha beta'
-    else beta'
-minSearch [] _ _ beta = beta
+instance Node Board where
+  terminalNode board = null $ shiftAllDirections (getBoard board)
+  maxChildren  board = map snd $ shiftAllDirections (getBoard board)
+  minChildren  board = insertAllPositions (getBoard board)
+  rank         board = evalCorners (getBoard board) + evalFreeTiles (getBoard board)
 
 -------------------------------------------------------------------------------
 -- STATIC EVALUATION FUNCTIONS
@@ -274,3 +241,12 @@ monotonTest1 = TestList [
     , "List same" ~: evalListMonotonicity [ 2, 2, 2, 2] 0 0 ~?= 0
     , "Not monotonic" ~: evalListMonotonicity [ 2, 1, 2,  1] 2 2 ~?= 4
     ]
+
+
+-------------------------------------------------------------------------------
+-- Alpha-beta Monad
+-------------------------------------------------------------------------------
+
+-- data AB = AB Node
+
+
