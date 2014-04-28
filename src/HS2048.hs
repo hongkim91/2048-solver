@@ -187,7 +187,9 @@ minChildren :: Node -> [Node]
 minChildren node = insertAllPositions node
 
 rank :: Node -> Int
-rank node = maximum $ boardValues node
+rank node = evalCorners node + evalFreeTiles node
+
+--maximum $ boardValues node
 
 -- Generic algorithm
 type Depth = Int
