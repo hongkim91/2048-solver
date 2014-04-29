@@ -198,16 +198,20 @@ instance Node BoardNode where
 -------------------------------------------------------------------------------
 
 -- coefficients for heuristics: monoticity, smoothness, and # of free tiles
-mWeight, sWeight, fWeight :: Int
+mWeight, sWeight :: Int
 mWeight = 10
 sWeight = 1
+
+fWeight :: Double
 fWeight = 27
 
 freeTiles :: Board -> Int
 freeTiles board = round $ (fWeight*) $ log' $ sum $ map (sum.(map free)) board
   where free Nothing = 1
         free (Just _)  = 0
-        log' x = log' $ (fromIntegral (x :: Integer) :: Double)
+
+log' :: Integer -> Double
+log' x = log $ (fromIntegral (x :: Integer) :: Double)
 
 evalTerimate :: Board -> Int
 evalTerimate board = if null (shiftAllDirections board) then -10000 else 0
