@@ -150,8 +150,8 @@ nextDirection board =
   if null newBoards then North
   else
     fst $ maximumBy (comparing snd) $ map f newBoards
-  where f (d,b) = (d, alphabeta b (searchDepth-1) (-10000) (-10000) Min)
-        searchDepth = 5
+  where f (d,b) = (d, alphabeta b (searchDepth-1) 1000000 (-1000000) Min)
+        searchDepth = 7
 
 -- helpers
 shiftAllDirections :: Board -> [(Direction, Board)]
@@ -170,6 +170,9 @@ insertAllPositions board = do
 boardValues :: Board -> [Int]
 boardValues board = map fromJust $ filter isJust $ concat board
 
+rowValues :: Row -> [Int]
+rowValues row = map fromJust $ filter isJust row
+
 -------------------------------------------------------------------------------
 -- Alpha-beta Pruning
 -------------------------------------------------------------------------------
@@ -184,10 +187,12 @@ maxChildren :: Node -> [Node]
 maxChildren node = map snd $ shiftAllDirections node
 
 minChildren :: Node -> [Node]
-minChildren node = insertAllPositions node
+minChildren = insertAllPositions
 
 rank :: Node -> Int
-rank node = evalCorners node + evalFreeTiles node
+rank board = maximum [(monotonicity board 0 0), (monotonicity (reverse board) 0 0)] 
+    + maximum [monotonicity (transpose board) 0 0, monotonicity (reverse (transpose board)) 0 0] 
+        
 
 --maximum $ boardValues node
 
@@ -225,13 +230,13 @@ minSearch [] _ _ beta = beta
 -- heuristics considered: monotonicity, smoothness, open tiles, corners are largest
 
 evalCorners :: Board -> Int
-evalCorners b = (evalRowCorner $ head b) + (evalRowCorner $ last b)
+evalCorners b = sum (map evalRowCorner b) + sum (map evalRowCorner (transpose b))
 
 evalRowCorner :: Row -> Int
 evalRowCorner l = case elemIndex (maximum l) l of
                     Nothing -> 0 -- should never happen
                     Just x  -> if x == 0 || x == length l - 1
-                               then 20000
+                               then 10000
                                else 0
 
 evalFreeTiles :: Board -> Int
@@ -240,37 +245,55 @@ evalFreeTiles board = sum $ map evalFreeRow board
 -- 20000 value is arbitrary score for open cell
 evalFreeRow :: Row -> Int
 evalFreeRow (c:cs) = case c of
-                        Nothing -> 20000 + evalFreeRow cs
+                        Nothing -> 10 + evalFreeRow cs
                         Just _  -> evalFreeRow cs
 evalFreeRow []     = 0
 
-evalSmoothness :: Board -> Int
-evalSmoothness board = undefined
 
-evalListSmoothness :: [Int] -> Int
-evalListSmoothness = undefined
+{-
+Hey, so for smoothness, the way it's implemented 
+in the JavaScript version is it's given a point (x,y) in the board,
+you traverse in all available directions until you meet a non-empty
+cell and subtract the absolute difference of your current
+and next cell to the smoothness rank. I think the problem I'm running into
+is column traversal (since a board is a list of rows), so I tried
+a workaround using transposes, but I think the approach is definitely
+flawed.
 
-smoothTests :: Test
-smoothTests = TestList [
-    "General smoothness test." ~: evalSmoothness (emptyBoard 4) ~?= 0
-    , "Test2" ~: evalSmoothness (emptyBoard 4) ~?= 1
-    ]
+Weights for the original js version:
+Monotonicity: 1.0
+Smoothness: 0.1
+Freetiles: 2.7 (but they took the log values of the empty tiles for some reason)
 
-evalMonotonicity :: Board -> Int
-evalMonotonicity = undefined
+-}
 
--- kinda hacky, should handle taking the two sums within a helper function
-evalListMonotonicity :: [Int] -> Int -> Int -> Int
-evalListMonotonicity (x:y:xs) decr incr
-    | x > y     = evalListMonotonicity (y:xs) (decr + y) incr
-    | x < y     = evalListMonotonicity (y:xs) decr (incr + y)
-    | otherwise = evalListMonotonicity (y:xs) decr incr
-evalListMonotonicity _ decr incr = maximum [decr, incr]
+smoothness :: Board -> Int
+smoothness board = sum (map f board ) 
+  + sum (map f (transpose board))
+  where f r = rowSmoothness r 0 1
 
-monotonTest1 :: Test
-monotonTest1 = TestList [
-    "List increasing" ~: evalListMonotonicity [ 4, 6, 8, 10] 4 4 ~?= 28
-    , "List decreasing" ~: evalListMonotonicity [ 8, 4, 2,  1] 8 8 ~?= 15
-    , "List same" ~: evalListMonotonicity [ 2, 2, 2, 2] 0 0 ~?= 0
-    , "Not monotonic" ~: evalListMonotonicity [ 2, 1, 2,  1] 2 2 ~?= 4
-    ]
+rowSmoothness :: Row -> Int -> Int -> Int
+rowSmoothness row strt nxt = let l = length row in
+                                if strt < l && nxt < l then
+                                case (row !! strt, row !! nxt) of
+                                  (Just x, Just y) -> abs (x - y) - rowSmoothness row (strt + 1) (nxt + 1) 
+                                  (Just _, Nothing) -> rowSmoothness row strt (nxt+1)
+                                  (Nothing, _) -> rowSmoothness row (strt + 1) (nxt + 1)
+                                else 0
+
+
+monotonicity :: Board -> Int -> Int -> Int
+monotonicity (r:rs) decr incr = 
+  monotonicity rs (decr + fst row) (incr + snd row)
+  where row = rowMonotonicity (rowValues r) 0 0
+        --h = if not (null (rowValues r )) then head (rowValues r) else 0
+monotonicity [] decr incr   = maximum [incr, decr]
+
+rowMonotonicity :: [Int] -> Int -> Int -> (Int, Int)
+rowMonotonicity (x:y:xs) decr incr
+  | x > y = rowMonotonicity (y:xs) (decr + y - x) incr
+  | x < y = rowMonotonicity (y:xs) decr (incr + x - y)
+  | otherwise = rowMonotonicity (y:xs) decr incr
+rowMonotonicity _ decr incr = (decr, incr)
+
+
