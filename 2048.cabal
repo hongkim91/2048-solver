@@ -6,7 +6,7 @@ build-type: Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules: HS2048
+  exposed-modules: HS2048, Alphabeta
   hs-source-dirs: src
   build-depends: base, text, haskeline, random, mtl, MonadRandom, HUnit
   ghc-options: -Wall

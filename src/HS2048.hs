@@ -175,16 +175,14 @@ boardValues board = map fromJust $ filter isJust $ concat board
 -- Alpha-beta Pruning
 -------------------------------------------------------------------------------
 
-data BoardNode = BN { getBoard :: Board }
-
-data Node = Board
+data BoardNode = BN Board
 
 -- Required game specific definitions
-instance Node Board where
-  terminalNode board = null $ shiftAllDirections (getBoard board)
-  maxChildren  board = map snd $ shiftAllDirections (getBoard board)
-  minChildren  board = insertAllPositions (getBoard board)
-  rank         board = evalCorners (getBoard board) + evalFreeTiles (getBoard board)
+instance Node BoardNode where
+  terminalNode (BN board) = null $ shiftAllDirections board
+  maxChildren  (BN board) = map (BN . snd) $ shiftAllDirections board
+  minChildren  (BN board) = map BN $ insertAllPositions board
+  rank         (BN board) = evalCorners board + evalFreeTiles board
 
 -------------------------------------------------------------------------------
 -- STATIC EVALUATION FUNCTIONS
