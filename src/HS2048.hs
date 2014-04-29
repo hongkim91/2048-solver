@@ -14,9 +14,9 @@ import qualified Data.Text as T
 
 import System.Console.Haskeline
 
-import Control.Concurrent
-
+-- import Control.Concurrent
 -- import Test.HUnit hiding (Node)
+
 import Alphabeta
 
 type Cell  = Maybe Int
@@ -110,7 +110,7 @@ runGame goal board score = do
     liftIO $ putStrLn ""
     liftIO $ putStrLn ""
 
-    _ <- getInputChar "Press any key to continue"
+    -- _ <- getInputChar "Press any key to continue"
     -- liftIO $ threadDelay $ 10^(4::Int)
     direction <- liftIO $ return $ nextDirection board
 
@@ -137,7 +137,7 @@ makeStartBoard size = do
 main :: IO ()
 main = do
     let size = 4
-        goal = Just 2048
+        goal = Just 16384
 
     startBoard <- makeStartBoard size
     putStrLn ""
@@ -155,8 +155,21 @@ nextDirection board =
   if null newBoards then North
   else
     fst $ maximumBy (comparing snd) $ map f newBoards
-  where f (d,b) = (d, alphabeta (BN b) (searchDepth-1) (-10000) (-10000) Min)
+  where f (d,b) = (d, alphabeta (BN b) (searchDepth-1) (-10000) (10000) Min)
         searchDepth = 5
+
+data BoardNode = BN Board
+
+-- Required game specific definitions
+instance Node BoardNode where
+  terminalNode (BN board) = null $ shiftAllDirections board
+  maxChildren  (BN board) = map (BN . snd) $ shiftAllDirections board
+  minChildren  (BN board) = map BN $ insertAllPositions board
+  rank         (BN board) = monotonicity board +
+                            smoothness board +
+                            freeTiles board +
+                            maxValue board +
+                            terminate board
 
 -- helpers
 shiftAllDirections :: Board -> [(Direction, Board)]
@@ -172,60 +185,18 @@ insertAllPositions board = do
   coin <- [2, 4]
   return $ update board pos (Just coin)
 
-boardValues :: Board -> [Int]
-boardValues board = map fromJust $ filter isJust $ concat board
-
-rowValues :: Row -> [Int]
-rowValues row = map fromJust $ filter isJust row
-
--------------------------------------------------------------------------------
--- Alpha-beta Pruning
--------------------------------------------------------------------------------
-
-data BoardNode = BN Board
-
--- Required game specific definitions
-instance Node BoardNode where
-  terminalNode (BN board) = null $ shiftAllDirections board
-  maxChildren  (BN board) = map (BN . snd) $ shiftAllDirections board
-  minChildren  (BN board) = map BN $ insertAllPositions board
-  rank         (BN board) = monotonicity board +
-                            smoothness board +
-                            freeTiles board
-
 -------------------------------------------------------------------------------
 -- STATIC EVALUATION FUNCTIONS
 -------------------------------------------------------------------------------
 
 -- coefficients for heuristics: monoticity, smoothness, and # of free tiles
-mWeight, sWeight :: Int
+mWeight, sWeight, maxWeight :: Int
+fWeight :: Double
+
 mWeight = 10
 sWeight = 1
-
-fWeight :: Double
 fWeight = 27
-
-freeTiles :: Board -> Int
-freeTiles board = round $ (fWeight*) $ log' $ sum $ map (sum.(map free)) board
-  where free Nothing = 1
-        free (Just _)  = 0
-
-log' :: Integer -> Double
-log' x = log $ (fromIntegral (x :: Integer) :: Double)
-
-evalTerimate :: Board -> Int
-evalTerimate board = if null (shiftAllDirections board) then -10000 else 0
-
-normalize :: Int -> Int
-normalize x = round $ log (fromIntegral x :: Double) / log 2
-
-normalizeBoard :: Board -> Board
-normalizeBoard = map (map normalizeMaybe)
-  where normalizeMaybe (Just x) = Just $ normalize x
-        normalizeMaybe Nothing = Nothing
-
-convertBoard :: Board -> [[Int]]
-convertBoard board = map rowValues $ normalizeBoard board
+maxWeight = 10
 
 -- monotonicity of the board in both direcitons
 monotonicity :: Board -> Int
@@ -255,6 +226,40 @@ smoothness board = (sWeight*) $ go board' + go board'T
         evalRow (x:y:xs) = evalRow (y:xs) - (abs (x-y))
         evalRow _ = 0
 
+freeTiles :: Board -> Int
+freeTiles board = round $ (fWeight*) $ log' $ sum $ map (sum.(map free)) board
+  where free Nothing = 1
+        free (Just _) = 0
+
+maxValue :: Board -> Int
+maxValue = (maxWeight*) . maximum . boardValues . normalizeBoard
+
+terminate :: Board -> Int
+terminate board = if null (shiftAllDirections board) then -10000 else 0
+
+-- helpers
+log' :: Integer -> Double
+log' x = if x == 0 then 0
+         else log $ (fromIntegral (x :: Integer) :: Double)
+
+normalize :: Int -> Int
+normalize x = round $ log (fromIntegral x :: Double) / log 2
+
+normalizeBoard :: Board -> Board
+normalizeBoard = map (map normalizeMaybe)
+  where normalizeMaybe (Just x) = Just $ normalize x
+        normalizeMaybe Nothing = Nothing
+
+convertBoard :: Board -> [[Int]]
+convertBoard board = map rowValues $ normalizeBoard board
+
+boardValues :: Board -> [Int]
+boardValues board = concat $ map rowValues board
+
+rowValues :: Row -> [Int]
+rowValues row = map fromJust $ filter isJust row
+
+-- testing
 sample :: Board
 sample = toBoard [[0,0,0,0],
                   [0,0,0,0],
