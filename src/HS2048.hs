@@ -239,12 +239,3 @@ monotonTest1 = TestList [
     , "List same" ~: evalListMonotonicity [ 2, 2, 2, 2] 0 0 ~?= 0
     , "Not monotonic" ~: evalListMonotonicity [ 2, 1, 2,  1] 2 2 ~?= 4
     ]
-
-
--------------------------------------------------------------------------------
--- Alpha-beta Monad
--------------------------------------------------------------------------------
-
--- data AB = AB Node
-
-
