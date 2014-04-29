@@ -16,7 +16,7 @@ import System.Console.Haskeline
 
 import Control.Concurrent
 
-import Test.HUnit hiding (Node)
+-- import Test.HUnit hiding (Node)
 import Alphabeta
 
 type Cell  = Maybe Int
@@ -103,6 +103,11 @@ gameRound goal direction board =
 runGame :: Cell -> Board -> Int -> InputT IO ()
 runGame goal board score = do
     liftIO . putStrLn $ showBoard board
+    liftIO $ do
+        putStrLn $ "  M: " ++ show (evalMonotonicity board) ++
+                   "  S: " ++ show (evalSmoothness board) ++
+                   "  T: " ++ show (evalFreeTiles board)
+    liftIO $ putStrLn ""
     liftIO $ putStrLn ""
 
     liftIO $ threadDelay $ 10^(5::Int)
@@ -117,9 +122,6 @@ runGame goal board score = do
         Win -> liftIO $
             putStrLn $ "You win with " ++ show totalScore ++ " points!"
         Active -> do
-            liftIO $ do
-                putStrLn $ "You earned " ++ show newPoints ++ " points."
-                putStrLn $ "Total score is " ++ show totalScore ++ " points."
             runGame goal newBoard totalScore
         Invalid -> do
             liftIO $ putStrLn "Invalid move, try again."
@@ -137,7 +139,8 @@ main = do
         goal = Just 2048
 
     startBoard <- makeStartBoard size
-    putStrLn "Use 'w', 'a', 's', and 'd' to move."
+    putStrLn ""
+    putStrLn ""
     runInputT defaultSettings $ runGame goal startBoard 0
 
 -------------------------------------------------------------------------------
@@ -152,7 +155,7 @@ nextDirection board =
   else
     fst $ maximumBy (comparing snd) $ map f newBoards
   where f (d,b) = (d, alphabeta (BN b) (searchDepth-1) (-10000) (-10000) Min)
-        searchDepth = 5
+        searchDepth = 31
 
 -- helpers
 shiftAllDirections :: Board -> [(Direction, Board)]
@@ -182,60 +185,40 @@ instance Node BoardNode where
   terminalNode (BN board) = null $ shiftAllDirections board
   maxChildren  (BN board) = map (BN . snd) $ shiftAllDirections board
   minChildren  (BN board) = map BN $ insertAllPositions board
-  rank         (BN board) = evalCorners board + evalFreeTiles board
+  rank         (BN board) = evalMonotonicity board + evalSmoothness board + evalFreeTiles board
+                            + evalTerimate board
 
 -------------------------------------------------------------------------------
 -- STATIC EVALUATION FUNCTIONS
 -------------------------------------------------------------------------------
--- heuristics considered: monotonicity, smoothness, open tiles, corners are largest
 
-evalCorners :: Board -> Int
-evalCorners b = (evalRowCorner $ head b) + (evalRowCorner $ last b)
-
-evalRowCorner :: Row -> Int
-evalRowCorner l = case elemIndex (maximum l) l of
-                    Nothing -> 0 -- should never happen
-                    Just x  -> if x == 0 || x == length l - 1
-                               then 20000
-                               else 0
-
-evalFreeTiles :: Board -> Int
-evalFreeTiles board = sum $ map evalFreeRow board
-
--- 20000 value is arbitrary score for open cell
-evalFreeRow :: Row -> Int
-evalFreeRow (c:cs) = case c of
-                        Nothing -> 20000 + evalFreeRow cs
-                        Just _  -> evalFreeRow cs
-evalFreeRow []     = 0
-
-evalSmoothness :: Board -> Int
-evalSmoothness board = undefined
-
-evalListSmoothness :: [Int] -> Int
-evalListSmoothness = undefined
-
-smoothTests :: Test
-smoothTests = TestList [
-    "General smoothness test." ~: evalSmoothness (emptyBoard 4) ~?= 0
-    , "Test2" ~: evalSmoothness (emptyBoard 4) ~?= 1
-    ]
+-- coefficients for heuristics: monoticity, smoothness, and # of free tiles
+m, s, t :: Int
+m = 10
+s = -15
+t = 5
 
 evalMonotonicity :: Board -> Int
-evalMonotonicity = undefined
+evalMonotonicity board = (m*) $ go board + go (transpose board)
+  where go b = abs $ sum $ map evalRow $ map (map fromJust) $ map (filter isJust) b
+        evalRow (x1:x2:xs) = (if x1 < x2 then 1 else -1) + evalRow (x2:xs)
+        evalRow _ = 0
 
--- kinda hacky, should handle taking the two sums within a helper function
-evalListMonotonicity :: [Int] -> Int -> Int -> Int
-evalListMonotonicity (x:y:xs) decr incr
-    | x > y     = evalListMonotonicity (y:xs) (decr + y) incr
-    | x < y     = evalListMonotonicity (y:xs) decr (incr + y)
-    | otherwise = evalListMonotonicity (y:xs) decr incr
-evalListMonotonicity _ decr incr = maximum [decr, incr]
+evalSmoothness :: Board -> Int
+evalSmoothness board = (s*) $ normalize $ go board + go (transpose board)
+  where go b = sum $ map evalRow b
+        evalRow ((Just x1):(Just x2):xs) = (abs (x1-x2)) + evalRow (Just x2:xs)
+        evalRow _ = 0
 
-monotonTest1 :: Test
-monotonTest1 = TestList [
-    "List increasing" ~: evalListMonotonicity [ 4, 6, 8, 10] 4 4 ~?= 28
-    , "List decreasing" ~: evalListMonotonicity [ 8, 4, 2,  1] 8 8 ~?= 15
-    , "List same" ~: evalListMonotonicity [ 2, 2, 2, 2] 0 0 ~?= 0
-    , "Not monotonic" ~: evalListMonotonicity [ 2, 1, 2,  1] 2 2 ~?= 4
-    ]
+evalFreeTiles :: Board -> Int
+evalFreeTiles board = (t*) $ sum $ map evalRow board
+  where evalRow (c:cs) = case c of
+                           Nothing -> 1 + evalRow cs
+                           Just _  -> evalRow cs
+        evalRow []     = 0
+
+evalTerimate :: Board -> Int
+evalTerimate board = if null (shiftAllDirections board) then -10000 else 0
+
+normalize :: Int -> Int
+normalize x = (round . log) (fromIntegral x :: Double)
