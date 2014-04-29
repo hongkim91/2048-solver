@@ -192,6 +192,7 @@ minChildren = insertAllPositions
 rank :: Node -> Int
 rank board = maximum [(monotonicity board 0 0), (monotonicity (reverse board) 0 0)] 
     + maximum [monotonicity (transpose board) 0 0, monotonicity (reverse (transpose board)) 0 0] 
+    + smoothness board
         
 
 --maximum $ boardValues node
