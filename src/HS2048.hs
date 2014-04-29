@@ -104,13 +104,14 @@ runGame :: Cell -> Board -> Int -> InputT IO ()
 runGame goal board score = do
     liftIO . putStrLn $ showBoard board
     liftIO $ do
-        putStrLn $ "  M: " ++ show (evalMonotonicity board) ++
-                   "  S: " ++ show (evalSmoothness board) ++
-                   "  T: " ++ show (evalFreeTiles board)
+        putStrLn $ "  M: " ++ show (monotonicity board) ++
+                   "  S: " ++ show (smoothness board) ++
+                   "  F: " ++ show (freeTiles board)
     liftIO $ putStrLn ""
     liftIO $ putStrLn ""
 
-    liftIO $ threadDelay $ 10^(5::Int)
+    _ <- getInputChar "Press any key to continue"
+    -- liftIO $ threadDelay $ 10^(4::Int)
     direction <- liftIO $ return $ nextDirection board
 
     RoundResult newPoints moveOutcome newBoard <-
@@ -155,7 +156,7 @@ nextDirection board =
   else
     fst $ maximumBy (comparing snd) $ map f newBoards
   where f (d,b) = (d, alphabeta (BN b) (searchDepth-1) (-10000) (-10000) Min)
-        searchDepth = 31
+        searchDepth = 5
 
 -- helpers
 shiftAllDirections :: Board -> [(Direction, Board)]
@@ -174,6 +175,9 @@ insertAllPositions board = do
 boardValues :: Board -> [Int]
 boardValues board = map fromJust $ filter isJust $ concat board
 
+rowValues :: Row -> [Int]
+rowValues row = map fromJust $ filter isJust row
+
 -------------------------------------------------------------------------------
 -- Alpha-beta Pruning
 -------------------------------------------------------------------------------
@@ -185,40 +189,72 @@ instance Node BoardNode where
   terminalNode (BN board) = null $ shiftAllDirections board
   maxChildren  (BN board) = map (BN . snd) $ shiftAllDirections board
   minChildren  (BN board) = map BN $ insertAllPositions board
-  rank         (BN board) = evalMonotonicity board + evalSmoothness board + evalFreeTiles board
-                            + evalTerimate board
+  rank         (BN board) = monotonicity board +
+                            smoothness board +
+                            freeTiles board
 
 -------------------------------------------------------------------------------
 -- STATIC EVALUATION FUNCTIONS
 -------------------------------------------------------------------------------
 
 -- coefficients for heuristics: monoticity, smoothness, and # of free tiles
-m, s, t :: Int
-m = 10
-s = -15
-t = 5
+mWeight, sWeight, fWeight :: Int
+mWeight = 10
+sWeight = 1
+fWeight = 27
 
-evalMonotonicity :: Board -> Int
-evalMonotonicity board = (m*) $ go board + go (transpose board)
-  where go b = abs $ sum $ map evalRow $ map (map fromJust) $ map (filter isJust) b
-        evalRow (x1:x2:xs) = (if x1 < x2 then 1 else -1) + evalRow (x2:xs)
-        evalRow _ = 0
-
-evalSmoothness :: Board -> Int
-evalSmoothness board = (s*) $ normalize $ go board + go (transpose board)
-  where go b = sum $ map evalRow b
-        evalRow ((Just x1):(Just x2):xs) = (abs (x1-x2)) + evalRow (Just x2:xs)
-        evalRow _ = 0
-
-evalFreeTiles :: Board -> Int
-evalFreeTiles board = (t*) $ sum $ map evalRow board
-  where evalRow (c:cs) = case c of
-                           Nothing -> 1 + evalRow cs
-                           Just _  -> evalRow cs
-        evalRow []     = 0
+freeTiles :: Board -> Int
+freeTiles board = round $ (fWeight*) $ log' $ sum $ map (sum.(map free)) board
+  where free Nothing = 1
+        free (Just _)  = 0
+        log' x = log' $ (fromIntegral (x :: Integer) :: Double)
 
 evalTerimate :: Board -> Int
 evalTerimate board = if null (shiftAllDirections board) then -10000 else 0
 
 normalize :: Int -> Int
-normalize x = (round . log) (fromIntegral x :: Double)
+normalize x = round $ log (fromIntegral x :: Double) / log 2
+
+normalizeBoard :: Board -> Board
+normalizeBoard = map (map normalizeMaybe)
+  where normalizeMaybe (Just x) = Just $ normalize x
+        normalizeMaybe Nothing = Nothing
+
+convertBoard :: Board -> [[Int]]
+convertBoard board = map rowValues $ normalizeBoard board
+
+-- monotonicity of the board in both direcitons
+monotonicity :: Board -> Int
+monotonicity board = (mWeight*) $ sum $ map (max'.boardMonotonicity) [board', board'T]
+  where board' = convertBoard board
+        board'T = convertBoard $ transpose board
+        max' (x,y) = max x y
+
+-- monotonicity of the board in one direction (left/right)
+boardMonotonicity :: [[Int]] -> (Int, Int)
+boardMonotonicity b = foldr (\r p -> sumPairs (rowMonotonicity r 0 0) p) (0,0) b
+  where sumPairs (x1,y1) (x2,y2) = (x1+x2,y1+y2)
+
+-- increasing/decreasing nature of one row
+rowMonotonicity :: [Int] -> Int -> Int -> (Int, Int)
+rowMonotonicity (x:y:xs) decr incr
+  | x > y = rowMonotonicity (y:xs) (decr + y - x) incr
+  | x < y = rowMonotonicity (y:xs) decr (incr + x - y)
+  | otherwise = rowMonotonicity (y:xs) decr incr
+rowMonotonicity _ decr incr = (decr, incr)
+
+smoothness :: Board -> Int
+smoothness board = (sWeight*) $ go board' + go board'T
+  where go b = sum $ map evalRow b
+        board' = convertBoard board
+        board'T = convertBoard $ transpose board
+        evalRow (x:y:xs) = evalRow (y:xs) - (abs (x-y))
+        evalRow _ = 0
+
+sample :: Board
+sample = toBoard [[0,0,0,0],
+                  [0,0,0,0],
+                  [2,0,4,0],
+                  [8,2,0,0]]
+  where toBoard = map (map toMaybe)
+        toMaybe x = if x > 0 then Just x else Nothing
