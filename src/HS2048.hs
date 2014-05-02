@@ -14,9 +14,6 @@ import qualified Data.Text as T
 
 import System.Console.Haskeline
 
--- import Control.Concurrent
--- import Test.HUnit hiding (Node)
-
 import Alphabeta
 
 type Cell  = Maybe Int
@@ -111,7 +108,6 @@ runGame goal board score = do
     liftIO $ putStrLn ""
 
     -- _ <- getInputChar "Press any key to continue"
-    -- liftIO $ threadDelay $ 10^(4::Int)
     direction <- liftIO $ return $ nextDirection board
 
     RoundResult newPoints moveOutcome newBoard <-

@@ -11,9 +11,9 @@ data Mode = Max | Min deriving (Eq)
 
 -- naive brute force minimax
 minimax :: Node a => a -> Depth -> Mode -> Int
-minimax node depth mode = 
+minimax node depth mode =
   if depth == 0 || terminalNode node then rank node
-  else case mode of 
+  else case mode of
     Max -> foldr (\x m -> max m (minimax x (depth-1) Min)) (-10000) (maxChildren node)
     Min -> foldr (\x m -> min m (minimax x (depth-1) Max)) 10000 (minChildren node)
 
@@ -31,9 +31,9 @@ alphabeta node depth alpha beta mode =
 -- QuickCheck Properties
 -------------------------------------------------------------------------------
 
---F2(p, alpha, beta) <= alpha if F(p) <= alpha, 
---F2(p, alpha, beta) == F(p)  if alpha < F(p) < beta, 
---F2(p, alpha, beta) >= beta  if F(p) >= beta. 
+--F2(p, alpha, beta) <= alpha if F(p) <= alpha,
+--F2(p, alpha, beta) == F(p)  if alpha < F(p) < beta,
+--F2(p, alpha, beta) >= beta  if F(p) >= beta.
 
 data IntNode = IN Int deriving (Show)
 
@@ -47,36 +47,16 @@ instance Arbitrary IntNode where
   arbitrary = liftM IN arbitrary
 
 prop_lessThanAlpha :: Node a => a -> Depth -> Int -> Int -> Property
-prop_lessThanAlpha node depth alpha beta = 
-  (minimax node depth Min <= alpha) && (alpha < beta) ==> 
+prop_lessThanAlpha node depth alpha beta =
+  (minimax node depth Min <= alpha) && (alpha < beta) ==>
   alphabeta node depth alpha beta Min <= alpha
 
 prop_equalsRank :: Node a => a -> Depth -> Int -> Int -> Property
-prop_equalsRank node depth alpha beta = 
-  (minimax node depth Min > alpha) && (minimax node depth Min < beta) && (alpha < beta) ==> 
-  alphabeta node depth alpha beta Min == minimax node depth Min 
+prop_equalsRank node depth alpha beta =
+  (minimax node depth Min > alpha) && (minimax node depth Min < beta) && (alpha < beta) ==>
+  alphabeta node depth alpha beta Min == minimax node depth Min
 
 prop_greaterThanBeta :: Node a => a -> Depth -> Int -> Int -> Property
-prop_greaterThanBeta node depth alpha beta = 
-  (minimax node depth Min >= beta) && (alpha < beta) ==> 
+prop_greaterThanBeta node depth alpha beta =
+  (minimax node depth Min >= beta) && (alpha < beta) ==>
   alphabeta node depth alpha beta Min >= beta
-
--------------------------------------------------------------------------------
--- Monadic Attempt
--------------------------------------------------------------------------------
--- import Data.Monoid
-
--- data AB a = AB [a]
-
--- instance Monoid (AB a) where
---   mempty = AB []
---   (AB x) `mappend` (AB y) = AB $ x ++ y
-
--- instance Monad AB where
---   return x = AB [x]
---   (AB []) >>= _ = AB []
---   (AB xs) >>= f = maximumAB $ mconcat $ map f xs
-
--- maximumAB :: (Ord a) => AB a -> AB a
--- maximumAB (AB []) = error "maximum called on empty list"
--- maximumAB (AB xs) = AB $ [maximum xs]
