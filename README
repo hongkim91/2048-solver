@@ -1,21 +1,26 @@
 0. Hong Kim and Dong Lee (Justin)
 
-1. Goal: Write an AI solver for the 2048 game.
+1. Goal: Write an AI solver for the 2048 game in Haskell.
 
-2. 
+2. Most Significant Challenge: Implementing the heuristics well enough so that the performance would be comparable to the best solutions in other languages.
 
-3. The project was a good showcase of the power of laziness in a functional language.
+3. Most Impressive Aspect: The brevity and clarity of our solution. The four main heuristics we implemented fit under 50 lines (including type declarations and whitespace), while the solutions written in languages like javascript require hundreds of lines.
 
-4. 
+4. Most Interesting Thing You Learned: Not every computational context plumbing is suited for a monad. Though it seemed reasonable at first, creating a Alpha-beta searching monad was an epic fail. Information cannot flow in both directions along a bind (at least without mind-wraping hacks...).
 
-5. We built our project on top of an existing implementation of a command-line 2048 written in Haskell.
-We looked at an existing JavaScript implementation of a solver for 2048 and based our implementation off of that.
-We also looked at an analysis of the alpha-beta pruning to conduct more rigorous testing.
+5. 1) badamson's haskell cli implementation of the 2048 game [https://github.com/badamson/2048.hs]:
+      We build our AI solver on top of this cli game. In other words, the game itself is managed and run by his code. Our code is what tells the game which direction it should shift the board next.
 
-https://github.com/badamson/2048.hs
-http://stackoverflow.com/questions/22342854/what-is-the-optimal-algorithm-for-the-game-2048
-"An Analysis of Alpha-Beta Pruning" Donald E. Knuth and Ronald W. Moore
+   2) ov3y's 2048 AI in JS [https://github.com/ov3y/2048-AI]:
+      We heavily referenced the heuristics (and the coefficients for combining the heuristics) from this solution.
 
-6. 
+   3) Daniel Higginbotham's explaination of the minimax algorithm [http://www.flyingmachinestudios.com/programming/minimax/]
 
-7. 
+   4) Explanation of alpha beta pruning from a UCLA CS course [http://cs.ucla.edu/~rosen/161/notes/alphabeta.html]
+
+   3) "An Analysis of Alpha-Beta Pruning" Donald E. Knuth and Ronald W. Moore:
+      Referenced for ideas in creating rigorous tests for alpha-beta pruning.
+
+6. A. All of the machinery that was needed to reliably beat this game (that even humans struggle) was written from scratch. Of course that doesn't mean we conjured this solver from thin air, but we feel that the delta of achievement was enough to deserve an A.
+
+7. Thank you so very much for a wonderful learning experience.
