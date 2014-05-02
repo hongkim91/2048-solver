@@ -7,31 +7,15 @@ class Node a where
   rank :: a -> Int
 
 type Depth = Int
-data Mode = Max | Min
+data Mode = Max | Min deriving (Eq)
 
 alphabeta :: Node a => a -> Depth -> Int -> Int -> Mode -> Int
-alphabeta node depth alpha beta mode =
-  if depth == 0 || terminalNode node then rank node
-  else
-    case mode of
-      Max -> maxSearch (maxChildren node) depth alpha beta
-      Min -> minSearch (minChildren node) depth alpha beta
-
-maxSearch :: Node a => [a] -> Depth -> Int -> Int -> Int
-maxSearch (x:xs) depth alpha beta =
-  let alpha' = max alpha (alphabeta x (depth-1) alpha beta Min) in
-  if alpha' < beta
-    then maxSearch xs depth alpha' beta
-    else alpha'
-maxSearch [] _ alpha _ = alpha
-
-minSearch :: Node a => [a] -> Depth -> Int -> Int -> Int
-minSearch (x:xs) depth alpha beta =
-  let beta' = min beta (alphabeta x (depth-1) alpha beta Max) in
-  if alpha < beta'
-    then minSearch xs depth alpha beta'
-    else beta'
-minSearch [] _ _ beta = beta
+alphabeta node depth alpha beta mode
+  | depth == 0 || terminalNode node = rank node
+  | alpha >= beta = if mode == Max then beta else alpha
+  | otherwise = case mode of
+      Max -> foldr (\x alpha' -> max alpha' (alphabeta x (depth-1) alpha' beta Min)) alpha (maxChildren node)
+      Min -> foldr (\x beta' -> min beta' (alphabeta x (depth-1) alpha beta' Max)) beta (minChildren node)
 
 -------------------------------------------------------------------------------
 -- Monadic Attempt
