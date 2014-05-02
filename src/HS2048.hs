@@ -158,9 +158,9 @@ nextDirection board =
   where f (d,b) = (d, alphabeta (BN b) (searchDepth-1) (-10000) (10000) Min)
         searchDepth = 5
 
+-- Required game specific definitions
 data BoardNode = BN Board
 
--- Required game specific definitions
 instance Node BoardNode where
   terminalNode (BN board) = null $ shiftAllDirections board
   maxChildren  (BN board) = map (BN . snd) $ shiftAllDirections board
@@ -190,74 +190,66 @@ insertAllPositions board = do
 -------------------------------------------------------------------------------
 
 -- coefficients for heuristics: monoticity, smoothness, and # of free tiles
-mWeight, sWeight, maxWeight :: Int
+monoWeight, sWeight, maxWeight :: Int
 fWeight :: Double
 
-mWeight = 10
+monoWeight = 10
 sWeight = 1
 fWeight = 27
 maxWeight = 10
 
 -- monotonicity of the board in both direcitons
 monotonicity :: Board -> Int
-monotonicity board = (mWeight*) $ sum $ map (max'.boardMonotonicity) [board', board'T]
-  where board' = convertBoard board
-        board'T = convertBoard $ transpose board
-        max' (x,y) = max x y
+monotonicity board = (monoWeight*) $ sum $ map go [board, transpose board]
+  where go = boardMonotonicity . takeValues . normalizeBoard
 
 -- monotonicity of the board in one direction (left/right)
-boardMonotonicity :: [[Int]] -> (Int, Int)
-boardMonotonicity b = foldr (\r p -> sumPairs (rowMonotonicity r 0 0) p) (0,0) b
-  where sumPairs (x1,y1) (x2,y2) = (x1+x2,y1+y2)
+boardMonotonicity :: [[Int]] -> Int
+boardMonotonicity b = max' $ foldr combine (0,0) b
+  where combine r = sumPairs (rowMonotonicity r)
+        sumPairs (x1,y1) (x2,y2) = (x1+x2,y1+y2)
+        max' (x,y) = max x y
 
 -- increasing/decreasing nature of one row
-rowMonotonicity :: [Int] -> Int -> Int -> (Int, Int)
-rowMonotonicity (x:y:xs) decr incr
-  | x > y = rowMonotonicity (y:xs) (decr + y - x) incr
-  | x < y = rowMonotonicity (y:xs) decr (incr + x - y)
-  | otherwise = rowMonotonicity (y:xs) decr incr
-rowMonotonicity _ decr incr = (decr, incr)
+rowMonotonicity :: [Int] -> (Int,Int)
+rowMonotonicity = foldPair combine (0,0)
+  where combine x y (dec, inc)
+          | x > y = (dec - abs (x - y), inc)
+          | x < y = (dec, inc - abs (x - y))
+          | otherwise = (dec, inc)
 
 smoothness :: Board -> Int
-smoothness board = (sWeight*) $ go board' + go board'T
-  where go b = sum $ map evalRow b
-        board' = convertBoard board
-        board'T = convertBoard $ transpose board
-        evalRow (x:y:xs) = evalRow (y:xs) - (abs (x-y))
-        evalRow _ = 0
+smoothness board = (sWeight*) $ sum $ map go [board, transpose board]
+  where go b = sum $ map evalRow $ takeValues $ normalizeBoard b
+        evalRow = foldPair (\x y b -> b - abs (x-y)) 0
 
 freeTiles :: Board -> Int
-freeTiles board = round $ (fWeight*) $ log' $ sum $ map (sum.(map free)) board
+freeTiles board = round $ (fWeight*) $ log' $ sum $ concat $ mapBoard free board
   where free Nothing = 1
         free (Just _) = 0
+        log' :: Integer -> Double
+        log' x = if x == 0 then 0 else log $ fromIntegral x
 
 maxValue :: Board -> Int
-maxValue = (maxWeight*) . maximum . boardValues . normalizeBoard
+maxValue = (maxWeight*) . maximum . concat . takeValues . normalizeBoard
 
 terminate :: Board -> Int
 terminate board = if null (shiftAllDirections board) then -10000 else 0
 
 -- helpers
-log' :: Integer -> Double
-log' x = if x == 0 then 0
-         else log $ (fromIntegral (x :: Integer) :: Double)
+foldPair :: (a -> a -> b -> b) -> b -> [a] -> b
+foldPair f b (x:y:xs) = f x y $ foldPair f b (y:xs)
+foldPair _ b _ = b
 
-normalize :: Int -> Int
-normalize x = round $ log (fromIntegral x :: Double) / log 2
+mapBoard :: (Cell -> a) -> Board -> [[a]]
+mapBoard = map.map
+
+takeValues :: Board -> [[Int]]
+takeValues = map catMaybes
 
 normalizeBoard :: Board -> Board
-normalizeBoard = map (map normalizeMaybe)
-  where normalizeMaybe (Just x) = Just $ normalize x
-        normalizeMaybe Nothing = Nothing
-
-convertBoard :: Board -> [[Int]]
-convertBoard board = map rowValues $ normalizeBoard board
-
-boardValues :: Board -> [Int]
-boardValues board = concat $ map rowValues board
-
-rowValues :: Row -> [Int]
-rowValues row = map fromJust $ filter isJust row
+normalizeBoard = mapBoard $ fmap normalize
+  where normalize x = round $ log (fromIntegral x :: Double) / log 2
 
 -- testing
 sample :: Board
